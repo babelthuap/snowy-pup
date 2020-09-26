@@ -33,6 +33,18 @@
     position: fixed;
     transform: translate(-50%, -50%);
   }
+  #pawsed {
+    color: #161312;
+    background-color: #ac7b4a;
+    border-radius: 2vw;
+    font-size: 10vw;
+    position: fixed;
+    left: 50vw;
+    top: 50vh;
+    transform: translate(-50%, -50%);
+    z-index: 100;
+    display: none;
+  }
   #score {
     position: fixed;
     top: 0;
@@ -58,6 +70,7 @@
     color: #0a0;
     font-size: 24px;
     font-style: monospace;
+    z-index: 100;
   }
 </style>
 </head>
@@ -65,49 +78,60 @@
 <span id="score">0</span>
 <div id="ground"></div>
 <div id="pup"></div>
-<div id="fps">-</div>
+<div id="pawsed">&nbsp;PAWSED&nbsp;</div>
+<div id="fps"></div>
 <script>
+(() => {
   'use strict';
 
+  // Puppy!
   const PUP = document.getElementById('pup');
   const PUP_SPEED = 3;
-  const PUP_HEIGHT = PUP.clientHeight;
-  const PUP_WIDTH = PUP.clientWidth;
-  let pupDirection = -1; // starts facing left
+  const PUP_HEIGHT = PUP.clientHeight >> 1;
+  const PUP_WIDTH = PUP.clientWidth >> 1;
+  let facingLeft = true;  // starts facing left
   let pupX = window.innerWidth / 2;
   let pupY = 3 * window.innerHeight / 4;
   PUP.style.left = `${pupX}px`;
   PUP.style.top = `${pupY}px`;
-  
+
+  // Display the number of snowflakes eaten.
   const SCOREBOARD = document.getElementById('score');
   let score = 0;
 
+  // Define the zone in which the pup will gobble a snowflake.
   const GOBBLE_ZONE = {minX: 0, maxX: 0, minY: 0, maxY: 0};
   function updateGobbleZone() {
-    // upper-left third
-    GOBBLE_ZONE.minX = pupDirection === -1 ? pupX - PUP_WIDTH / 2 : pupX + PUP_WIDTH / 6;
-    GOBBLE_ZONE.maxX = pupDirection === -1 ? pupX - PUP_WIDTH / 6 : pupX + PUP_WIDTH / 2;
-    GOBBLE_ZONE.minY = pupY - PUP_HEIGHT / 2;
-    GOBBLE_ZONE.maxY = pupY - PUP_HEIGHT / 6;    
+    GOBBLE_ZONE.minX = facingLeft ? pupX - PUP_WIDTH : pupX;
+    GOBBLE_ZONE.maxX = facingLeft ? pupX : pupX + PUP_WIDTH;
+    GOBBLE_ZONE.minY = pupY - PUP_HEIGHT;
+    GOBBLE_ZONE.maxY = pupY - PUP_HEIGHT / 3;    
   }
   updateGobbleZone();
 
+  // Record the last know position of the mouse.
   let mouseX = pupX;
   let mouseY = pupY;
   document.body.addEventListener('mousemove', e => {
     mouseX = e.clientX;
     mouseY = Math.max(window.innerHeight >> 1, e.clientY);
   });
-  
+
+  // Press space to pause/unpause.
   let playing = true;
+  const PAWSED_EL = document.getElementById('pawsed');
   document.body.addEventListener('keydown', e => {
     if (e.code === 'Space') {
       playing = !playing;
+      PAWSED_EL.style.display = playing ? 'none' : 'block';
     }
   });
-  
+
+  // Store the snowflakes in a set to make it easy to:
+  //   1) iterate over them
+  //   2) random-access delete them
   const SNOWFLAKES = new Set();
-  const SNOWFLAKE_SPEED = 4;
+  const SNOWFLAKE_SPEED = 3;
   let snowflakeInterval = 1000;
   function spawnSnowflake() {
     if (!playing) {
@@ -124,11 +148,12 @@
     el.style.height = el.style.width = `${size}px`;
     document.body.append(el);
     SNOWFLAKES.add({el, x, y, size});
-    snowflakeInterval = Math.max(400, snowflakeInterval - 10);
+    snowflakeInterval = Math.max(200, snowflakeInterval - 10);
     setTimeout(spawnSnowflake, snowflakeInterval);
   }
   spawnSnowflake();
 
+  // Update the FPS counter once per second.
   let frames = 0;
   const FPS_EL = document.getElementById('fps');
   setInterval(() => {
@@ -136,6 +161,7 @@
     frames = 0;
   }, 1000 /* ms */);
 
+  // Game loop. 1 tick == 1 frame
   let previousTimestamp = null;
   function tick(timestamp) {
     frames++;
@@ -152,18 +178,39 @@
   }
   requestAnimationFrame(tick);
   
+  // Proportionally reposition all sprites on window resize.
+  let windowWidth = window.innerWidth;
+  let windowHeight = window.innerHeight;
+  window.addEventListener('resize', () => {
+    const newWidth = window.innerWidth;
+    const newHeight = window.innerHeight;
+    const widthFactor = newWidth / windowWidth;
+    const heightFactor = newHeight / windowHeight;
+    pupX *= widthFactor;
+    pupY *= heightFactor;
+    mouseX *= widthFactor;
+    mouseY *= heightFactor;
+    SNOWFLAKES.forEach(snowflake => {
+      snowflake.x *= widthFactor;
+      snowflake.y *= heightFactor;
+    });
+    windowWidth = newWidth;
+    windowHeight = newHeight;
+  });
+
+  // Face the pup towards the mouse and move towards it.
   function movePup(elapsed) {
     if (mouseX > pupX) {
       // should face right
-      if (pupDirection === -1) { // if facing left...
-        pupDirection = 1;
-        PUP.style.transform = `matrix(-1,0,0,1,-${PUP_WIDTH >> 1},-${PUP_HEIGHT >> 1})`;
+      if (facingLeft) {
+        facingLeft = false;
+        PUP.style.transform = `matrix(-1,0,0,1,-${PUP_WIDTH},-${PUP_HEIGHT})`;
       }
     } else {
       // should face left
-      if (pupDirection === 1) { // if facing right...
-        pupDirection = -1;
-        PUP.style.transform = `matrix(1,0,0,1,-${PUP_WIDTH >> 1},-${PUP_HEIGHT >> 1})`;
+      if (!facingLeft) {
+        facingLeft = true;
+        PUP.style.transform = `matrix(1,0,0,1,-${PUP_WIDTH},-${PUP_HEIGHT})`;
       }
     }
     const dx = mouseX - pupX;
@@ -175,29 +222,34 @@
     PUP.style.top = `${pupY}px`;
     updateGobbleZone();
   }
-  
+
+  // Move all snowflakes downwards. Delete a snowflake if either it's been
+  // gobbled or it's off the screen. Update the scoreboard.
   function moveSnowflakes(elapsed) {
     SNOWFLAKES.forEach(snowflake => {
-      snowflake.y += elapsed * SNOWFLAKE_SPEED * .01;
+      snowflake.y += elapsed * (SNOWFLAKE_SPEED * .01) * (64 / snowflake.size);
       const {x, y} = snowflake;
       const {minX, maxX, minY, maxY} = GOBBLE_ZONE;
       if (minX < x && x < maxX && minY < y && y < maxY) {
         score++;
-        SCOREBOARD.innerText = score;
         snowflake.el.remove();
         SNOWFLAKES.delete(snowflake);
       } else if (snowflake.y - (snowflake.size >> 1) > window.innerHeight) {
         snowflake.el.remove();
         SNOWFLAKES.delete(snowflake);
       } else {
+        snowflake.el.style.left = `${snowflake.x}px`;
         snowflake.el.style.top = `${snowflake.y}px`;
       }
     });
+    SCOREBOARD.innerText = score > 100 ? 'Like a billion' : score;
   }
 
+  // Pick a random int in [a, b]
   function rand(a, b) {
     return a + Math.floor(Math.random() * (b - a + 1));
   }
+})();
 </script>
 </body>
 </html>
