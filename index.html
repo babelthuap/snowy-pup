@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Snowy Pup</title>
+<style>
+  html,body {
+    height: 100%;
+    margin: 0;
+    overflow: hidden;
+    padding: 0;
+  }
+  body {
+    background: linear-gradient(#aac, #fff);
+    cursor: help;
+  }
+  #ground {
+    background-color: #fff;
+    position: fixed;
+    bottom: 0;
+    width: 100vw;
+    height: 50vh;
+    z-index: -1;
+  }
+  #pup {
+    height: 200px;
+    width: 200px;
+    background-image: url("./pup.png");
+    background-position: center center;
+    background-size: contain;
+    background-repeat: no-repeat;
+    position: fixed;
+    transform: translate(-50%, -50%);
+  }
+  #score {
+    position: fixed;
+    top: 0;
+    left: 50%;
+    color: #fff;
+    font-size: 48px;
+    font-weight: bold;
+    transform: translate(-50%, 0);
+  }
+  .snowflake {
+    background-image: url("./snowflake.png");
+    background-position: center center;
+    background-size: contain;
+    background-repeat: no-repeat;
+    border-radius: 100%;
+    position: fixed;
+    transform: translate(-50%, -50%);
+  }
+  #fps {
+    position: fixed;
+    bottom: 0;
+    right: 0;
+    color: #0a0;
+    font-size: 24px;
+    font-style: monospace;
+  }
+</style>
+</head>
+<body>
+<span id="score">0</span>
+<div id="ground"></div>
+<div id="pup"></div>
+<div id="fps">-</div>
+<script>
+  'use strict';
+
+  const PUP = document.getElementById('pup');
+  const PUP_SPEED = 3;
+  const PUP_HEIGHT = PUP.clientHeight;
+  const PUP_WIDTH = PUP.clientWidth;
+  let pupDirection = -1; // starts facing left
+  let pupX = window.innerWidth / 2;
+  let pupY = 3 * window.innerHeight / 4;
+  PUP.style.left = `${pupX}px`;
+  PUP.style.top = `${pupY}px`;
+  
+  const SCOREBOARD = document.getElementById('score');
+  let score = 0;
+
+  const GOBBLE_ZONE = {minX: 0, maxX: 0, minY: 0, maxY: 0};
+  function updateGobbleZone() {
+    // upper-left third
+    GOBBLE_ZONE.minX = pupDirection === -1 ? pupX - PUP_WIDTH / 2 : pupX + PUP_WIDTH / 6;
+    GOBBLE_ZONE.maxX = pupDirection === -1 ? pupX - PUP_WIDTH / 6 : pupX + PUP_WIDTH / 2;
+    GOBBLE_ZONE.minY = pupY - PUP_HEIGHT / 2;
+    GOBBLE_ZONE.maxY = pupY - PUP_HEIGHT / 6;    
+  }
+  updateGobbleZone();
+
+  let mouseX = pupX;
+  let mouseY = pupY;
+  document.body.addEventListener('mousemove', e => {
+    mouseX = e.clientX;
+    mouseY = Math.max(window.innerHeight >> 1, e.clientY);
+  });
+  
+  let playing = true;
+  document.body.addEventListener('keydown', e => {
+    if (e.code === 'Space') {
+      playing = !playing;
+    }
+  });
+  
+  const SNOWFLAKES = new Set();
+  const SNOWFLAKE_SPEED = 4;
+  let snowflakeInterval = 1000;
+  function spawnSnowflake() {
+    if (!playing) {
+      setTimeout(spawnSnowflake, snowflakeInterval);
+      return;
+    }
+    const size = rand(32, 64);
+    const x = rand(0, window.innerWidth);
+    const y = 0 - (size >> 1);
+    const el = document.createElement('div');
+    el.classList.add('snowflake');
+    el.style.left = `${x}px`;
+    el.style.top = `${y}px`;
+    el.style.height = el.style.width = `${size}px`;
+    document.body.append(el);
+    SNOWFLAKES.add({el, x, y, size});
+    snowflakeInterval = Math.max(400, snowflakeInterval - 10);
+    setTimeout(spawnSnowflake, snowflakeInterval);
+  }
+  spawnSnowflake();
+
+  let frames = 0;
+  const FPS_EL = document.getElementById('fps');
+  setInterval(() => {
+    FPS_EL.innerText = frames;
+    frames = 0;
+  }, 1000 /* ms */);
+
+  let previousTimestamp = null;
+  function tick(timestamp) {
+    frames++;
+    if (!playing || previousTimestamp === null) {
+      previousTimestamp = timestamp;
+      requestAnimationFrame(tick);
+      return;
+    }
+    const elapsed = timestamp - previousTimestamp;
+    previousTimestamp = timestamp;
+    movePup(elapsed);
+    moveSnowflakes(elapsed);
+    requestAnimationFrame(tick);
+  }
+  requestAnimationFrame(tick);
+  
+  function movePup(elapsed) {
+    if (mouseX > pupX) {
+      // should face right
+      if (pupDirection === -1) { // if facing left...
+        pupDirection = 1;
+        PUP.style.transform = `matrix(-1,0,0,1,-${PUP_WIDTH >> 1},-${PUP_HEIGHT >> 1})`;
+      }
+    } else {
+      // should face left
+      if (pupDirection === 1) { // if facing right...
+        pupDirection = -1;
+        PUP.style.transform = `matrix(1,0,0,1,-${PUP_WIDTH >> 1},-${PUP_HEIGHT >> 1})`;
+      }
+    }
+    const dx = mouseX - pupX;
+    const dy = mouseY - pupY;
+    const factor = elapsed * PUP_SPEED * .001;
+    pupX += dx * factor;
+    pupY += dy * factor;
+    PUP.style.left = `${pupX}px`;
+    PUP.style.top = `${pupY}px`;
+    updateGobbleZone();
+  }
+  
+  function moveSnowflakes(elapsed) {
+    SNOWFLAKES.forEach(snowflake => {
+      snowflake.y += elapsed * SNOWFLAKE_SPEED * .01;
+      const {x, y} = snowflake;
+      const {minX, maxX, minY, maxY} = GOBBLE_ZONE;
+      if (minX < x && x < maxX && minY < y && y < maxY) {
+        score++;
+        SCOREBOARD.innerText = score;
+        snowflake.el.remove();
+        SNOWFLAKES.delete(snowflake);
+      } else if (snowflake.y - (snowflake.size >> 1) > window.innerHeight) {
+        snowflake.el.remove();
+        SNOWFLAKES.delete(snowflake);
+      } else {
+        snowflake.el.style.top = `${snowflake.y}px`;
+      }
+    });
+  }
+
+  function rand(a, b) {
+    return a + Math.floor(Math.random() * (b - a + 1));
+  }
+</script>
+</body>
+</html>
